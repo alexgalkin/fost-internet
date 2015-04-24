@@ -469,39 +469,39 @@ struct network_connection::state {
 //         const throw () {
 //     return L"Network connection failure";
 // }
-//
-//
-// /*
-//     fostlib::exceptions::read_timeout
-// */
-//
-//
-// fostlib::exceptions::read_timeout::read_timeout() throw () {
-// }
-//
-//
-// wliteral const fostlib::exceptions::read_timeout::message() const throw () {
-//     return L"Read time out";
-// }
-//
-//
-// /*
-//     fostlib::exceptions::read_error
-// */
-//
-//
-// fostlib::exceptions::read_error::read_error() throw () {
-// }
-//
-//
-// fostlib::exceptions::read_error::read_error(
-//     boost::system::error_code error
-// ) throw ()
-// : socket_error(error) {
-// }
-//
-//
-// wliteral const fostlib::exceptions::read_error::message()
-//         const throw () {
-//     return L"Read error";
-// }
+
+
+/*
+    fostlib::exceptions::read_timeout
+*/
+
+
+fostlib::exceptions::read_timeout::read_timeout() throw () {
+}
+
+
+wliteral const fostlib::exceptions::read_timeout::message() const throw () {
+    return L"Read time out";
+}
+
+
+/*
+    fostlib::exceptions::read_error
+*/
+
+
+fostlib::exceptions::read_error::read_error() throw () {
+}
+
+
+fostlib::exceptions::read_error::read_error(
+    boost::system::error_code error
+) throw ()
+: socket_error(error) {
+}
+
+
+wliteral const fostlib::exceptions::read_error::message()
+        const throw () {
+    return L"Read error";
+}
