@@ -427,16 +427,6 @@ network_connection &fostlib::network_connection::operator >> ( utf8_string &s ) 
 //         v[p] = m_input_buffer.sbumpc();
 //     return *this;
 // }
-// void fostlib::network_connection::operator >> ( boost::asio::streambuf &b ) {
-//     while ( m_input_buffer.size() ) {
-//         b.sputc(m_input_buffer.sbumpc());
-//     }
-//     boost::system::error_code error;
-//     read(*m_socket, m_ssl_data, b, boost::asio::transfer_all(), error);
-//     if ( error != boost::asio::error::eof ) {
-//         throw exceptions::read_error(error);
-//     }
-// }
 
 
 /*
