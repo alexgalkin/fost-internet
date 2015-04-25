@@ -80,6 +80,8 @@ struct network_connection::state {
     std::unique_ptr<boost::asio::ip::tcp::socket> socket;
     std::unique_ptr<ssl_data> ssl;
 
+    boost::asio::streambuf input_buffer;
+
     std::mutex mutex;
     std::condition_variable signal;
     int connect_timeout, read_timeout;
@@ -132,8 +134,10 @@ struct network_connection::state {
 
     void check_error(const boost::system::error_code &error, nliteral message) {
         if ( error == boost::asio::error::eof ) {
+            socket->close();
             throw exceptions::unexpected_eof(message);
         } else if ( error ) {
+            socket->close();
             throw exceptions::socket_error(error, message);
         }
     }
@@ -159,6 +163,33 @@ struct network_connection::state {
         signal.wait(lock); // Shouldn't need a time out on writes
         check_error(error, message);
         return sent;
+    }
+
+    std::vector<utf8> read(std::size_t bytes, nliteral message) {
+        boost::system::error_code error{};
+        std::unique_lock<std::mutex> lock(mutex);
+        auto handler = [this, &error](
+            const boost::system::error_code &e, std::size_t
+        ) {
+            std::unique_lock<std::mutex> lock(mutex);
+            error = e;
+            lock.unlock();
+            signal.notify_one();
+        };
+        if ( ssl ) {
+            boost::asio::async_read(ssl->socket, input_buffer, boost::asio::transfer_at_least(bytes), handler);
+        } else {
+            boost::asio::async_read(socket, input_buffer, boost::asio::transfer_at_least(bytes), handler);
+        }
+        if ( signal.wait_for(lock, std::chrono::seconds(read_timeout)) ==
+                std::cv_status::no_timeout ) {
+            std::vector<utf8> data(bytes);
+            input_buffer.sgetn(reinterpret_cast<char*>(data.data()), bytes);
+            return data;
+        } else {
+            socket->close();
+            throw exceptions::socket_error(boost::asio::error::timed_out, message);
+        }
     }
 };
 
@@ -228,11 +259,6 @@ namespace {
 //                 boost::ref(timer), boost::ref(read_result),
 //                 boost::lambda::_1);
 //         }
-//         read_async_function_type read_async_function() {
-//             return boost::lambda::bind(&read_done,
-//                 boost::ref(timer), boost::ref(read_result),
-//                 boost::lambda::_1, boost::lambda::_2);
-//         }
 //
 //         std::size_t complete() {
 //             sock.get_io_service().reset();
@@ -257,22 +283,6 @@ namespace {
 //                 timeout.read_async_function());
 //         else
 //             boost::asio::async_read_until(sock, b, term,
-//                 timeout.read_async_function());
-//         return timeout.complete();
-//     }
-//
-//     template< typename F >
-//     inline std::size_t read(
-//         boost::asio::ip::tcp::socket &sock, ssl_data *ssl,
-//         boost::asio::streambuf &b, F f,
-//         boost::system::error_code &e
-//     ) {
-//         timeout_wrapper timeout(sock, e);
-//         if ( ssl )
-//             boost::asio::async_read(ssl->ssl_sock, b, f,
-//                 timeout.read_async_function());
-//         else
-//             boost::asio::async_read(sock, b, f,
 //                 timeout.read_async_function());
 //         return timeout.complete();
 //     }
@@ -335,12 +345,10 @@ fostlib::network_connection::network_connection(const host &h, nullable< port_nu
             b.sputc(0); // User ID
             pimpl->send(b, "Trying to establish SOCKS connection");
             // Receive the response
-            read(*(pimpl->socket), nullptr, m_input_buffer, boost::asio::transfer_at_least(8));
-            if ( m_input_buffer.sbumpc() != 0x00 || m_input_buffer.sbumpc() != 0x5a ) {
+            std::vector<utf8> data{pimpl->read(8, "Trying to read SOCKS response")};
+            if ( data[0] != 0x00 || data[1] != 0x5a ) {
                 throw exceptions::socket_error("SOCKS 4 error handling where the response values are not 0x00 0x5a");
             }
-            char ignore[6];
-            m_input_buffer.sgetn(ignore, 6);
         } else {
             throw exceptions::socket_error("SOCKS version not implemented", coerce< string >(c_socks_version.value()));
         }
