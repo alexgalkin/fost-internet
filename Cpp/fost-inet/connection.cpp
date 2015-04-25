@@ -361,7 +361,7 @@ void fostlib::network_connection::start_ssl() {
 }
 
 
-network_connection &fostlib::network_connection::operator << ( const const_memory_block &p ) {
+network_connection &fostlib::network_connection::operator << (const const_memory_block &p) {
     const unsigned char
         *begin = reinterpret_cast< const unsigned char * >( p.first ),
         *end =  reinterpret_cast< const unsigned char * >( p.second )
