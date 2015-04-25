@@ -23,6 +23,8 @@
 #include <boost/lexical_cast.hpp>
 
 #include <atomic>
+#include <mutex>
+#include <condition_variable>
 
 
 using namespace fostlib;
@@ -76,18 +78,57 @@ struct network_connection::state {
     int64_t number;
     timer time;
     boost::asio::io_service &io_service;
-    std::unique_ptr<boost::asio::ip::tcp::socket > socket;
+    std::unique_ptr<boost::asio::ip::tcp::socket> socket;
     std::unique_ptr<ssl_data> ssl;
+
+    std::mutex mutex;
+    std::condition_variable signal;
+    int connect_timeout, read_timeout;
 
     state(
         boost::asio::io_service &io_service,
         std::unique_ptr<boost::asio::ip::tcp::socket > s
     ) : number(++g_network_counter), io_service(io_service),
-            socket(std::move(s)) {
+            socket(std::move(s)),
+            connect_timeout(coerce<int>(c_connect_timeout.value())),
+            read_timeout(coerce<int>(c_read_timeout.value())) {
     }
 
     void start_ssl() {
         ssl.reset(new ssl_data(io_service, *socket));
+    }
+
+
+    void connect(const host &host, port_number port) {
+        using namespace boost::asio::ip;
+        tcp::resolver resolver(io_service);
+        tcp::resolver::query q(
+            coerce<ascii_string>(host.name()).underlying(),
+            coerce<ascii_string>(coerce<string>(port)).underlying());
+        boost::system::error_code host_error;
+        tcp::resolver::iterator endpoint = resolver.resolve(q, host_error), end;
+        if ( host_error == boost::asio::error::host_not_found ) {
+            throw exceptions::host_not_found( host.name() );
+        }
+        boost::system::error_code connect_error =
+            boost::asio::error::host_not_found;
+        while ( connect_error && endpoint != end ) {
+            std::unique_lock<std::mutex> lock(mutex);
+            socket->async_connect(*endpoint++, [this]() {
+                signal.notify_one();
+            });
+            if ( signal.wait_for(lock, std::chrono::seconds(connect_timeout)) ==
+                    std::cv_status::no_timeout ) {
+                // Got a good connection, let's use it
+                return;
+            } else {
+                connect_error = boost::asio::error::timed_out;
+                socket->close();
+            }
+        }
+        if ( connect_error ) {
+            throw exceptions::connect_failure(connect_error, host, port);
+        }
     }
 };
 
@@ -255,36 +296,6 @@ namespace {
 //             "Whilst reading data from a socket", error);
 //         return bytes;
 //     }
-//
-//     void connect(
-//         boost::asio::io_service &io_service,
-//         boost::asio::ip::tcp::socket &socket,
-//         const host &host, port_number port
-//     ) {
-//         using namespace boost::asio::ip;
-//         tcp::resolver resolver(io_service);
-//         tcp::resolver::query q(
-//             coerce<ascii_string>(host.name()).underlying(),
-//             coerce<ascii_string>(coerce<string>(port)).underlying());
-//         boost::system::error_code host_error;
-//         tcp::resolver::iterator endpoint = resolver.resolve(q, host_error), end;
-//         if ( host_error == boost::asio::error::host_not_found )
-//             throw exceptions::host_not_found( host.name() );
-//         boost::system::error_code connect_error =
-//             boost::asio::error::host_not_found;
-//         while ( connect_error && endpoint != end ) {
-//             socket.close();
-//             timeout_wrapper timeout(socket, connect_error, c_connect_timeout);
-//             socket.async_connect(*endpoint++, timeout.connect_async_function());
-//             try {
-//                 timeout.complete();
-//             } catch ( exceptions::read_timeout & ) {
-//                 connect_error = boost::asio::error::timed_out;
-//             }
-//         }
-//         if ( connect_error )
-//             throw exceptions::connect_failure(connect_error, host, port);
-//     }
 
 
 }
@@ -296,39 +307,43 @@ fostlib::network_connection::network_connection(
 }
 
 
-// fostlib::network_connection::network_connection(const host &h, nullable< port_number > p)
-// : connection_id(++g_network_counter),
-//         io_service(g_io_service),
-//         m_socket(new boost::asio::ip::tcp::socket(io_service)),
-//         m_ssl_data(NULL) {
-//     const port_number port = p.value(coerce< port_number >(h.service().value("0")));
-//     json socks(c_socks_version.value());
-//
-//     if ( !socks.isnull() ) {
-//         const host socks_host( coerce< host >( c_socks_host.value() ) );
-//         connect(io_service, *m_socket, socks_host, coerce< port_number >(socks_host.service().value("0")));
-//         if ( c_socks_version.value() == json(4) ) {
-//             boost::asio::streambuf b;
-//             // Build and send the command to establish the connection
-//             b.sputc(0x4); // SOCKS v 4
-//             b.sputc(0x1); // stream
-//             b.sputc((port & 0xff00) >> 8); b.sputc(port & 0xff); // Destination port
-//             boost::asio::ip::address_v4::bytes_type bytes( h.address().to_v4().to_bytes() );
-//             for ( std::size_t p = 0; p < 4; ++p )
-//                 b.sputc(bytes[p]);
-//             b.sputc(0); // User ID
-//             send(*m_socket, NULL, b);
-//             // Receive the response
-//             read(*m_socket, NULL, m_input_buffer, boost::asio::transfer_at_least(8));
-//             if ( m_input_buffer.sbumpc() != 0x00 || m_input_buffer.sbumpc() != 0x5a )
-//                 throw exceptions::socket_error("SOCKS 4 error handling where the response values are not 0x00 0x5a");
-//             char ignore[6];
-//             m_input_buffer.sgetn(ignore, 6);
-//         } else
-//             throw exceptions::socket_error("SOCKS version not implemented", coerce< string >(c_socks_version.value()));
-//     } else
-//         connect(io_service, *m_socket, h, port);
-// }
+fostlib::network_connection::network_connection(const host &h, nullable< port_number > p)
+: pimpl(new state(g_client_service,
+        std::unique_ptr<boost::asio::ip::tcp::socket>(
+            new boost::asio::ip::tcp::socket(g_client_service)))) {
+    const port_number port = p.value(coerce<port_number>(h.service().value("0")));
+    json socks(c_socks_version.value());
+
+    if ( !socks.isnull() ) {
+        const host socks_host( coerce< host >( c_socks_host.value() ) );
+        pimpl->connect(socks_host, coerce<port_number>(socks_host.service().value("0")));
+        if ( c_socks_version.value() == json(4) ) {
+            boost::asio::streambuf b;
+            // Build and send the command to establish the connection
+            b.sputc(0x4); // SOCKS v 4
+            b.sputc(0x1); // stream
+            b.sputc((port & 0xff00) >> 8); b.sputc(port & 0xff); // Destination port
+            boost::asio::ip::address_v4::bytes_type bytes( h.address().to_v4().to_bytes() );
+            for ( std::size_t p = 0; p < 4; ++p )
+                b.sputc(bytes[p]);
+            b.sputc(0); // User ID
+            send(*(pimpl->socket), nullptr, b);
+            // Receive the response
+            read(*(pimpl->socket), nullptr, m_input_buffer, boost::asio::transfer_at_least(8));
+            if ( m_input_buffer.sbumpc() != 0x00 || m_input_buffer.sbumpc() != 0x5a ) {
+                throw exceptions::socket_error("SOCKS 4 error handling where the response values are not 0x00 0x5a");
+            }
+            char ignore[6];
+            m_input_buffer.sgetn(ignore, 6);
+        } else {
+            throw exceptions::socket_error("SOCKS version not implemented", coerce< string >(c_socks_version.value()));
+        }
+    } else {
+        pimpl->connect(h, port);
+    }
+}
+
+
 fostlib::network_connection::~network_connection() {
 }
 
