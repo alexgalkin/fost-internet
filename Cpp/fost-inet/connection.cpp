@@ -17,6 +17,7 @@
 
 #include <fost/insert>
 #include <fost/datetime>
+#include <fost/log>
 #include <fost/timer>
 
 #include <boost/asio/ssl.hpp>
@@ -110,7 +111,7 @@ struct network_connection::state {
         boost::system::error_code host_error;
         tcp::resolver::iterator endpoint = resolver.resolve(q, host_error), end;
         if ( host_error == asio::error::host_not_found ) {
-            throw exceptions::host_not_found( host.name() );
+            throw exceptions::host_not_found(host.name());
         }
         boost::system::error_code connect_error =
             asio::error::host_not_found;
@@ -130,6 +131,11 @@ struct network_connection::state {
                     return;
                 }
             } else {
+                log::error()
+                    ("error", "signal for connect timed out")
+                    ("now", timestamp::now())
+                    ("elapsed", time.elapsed())
+                    ("timeout", connect_timeout);
                 connect_error = asio::error::timed_out;
                 socket->close();
             }
