@@ -259,6 +259,11 @@ private:
 };
 
 
+fostlib::network_connection::network_connection(network_connection &&cnx)
+: pimpl(cnx.pimpl.release()) {
+}
+
+
 fostlib::network_connection::network_connection(
     asio::io_service &io_service, std::unique_ptr< asio::ip::tcp::socket > socket
 ) : pimpl(new state(io_service, std::move(socket))) {
