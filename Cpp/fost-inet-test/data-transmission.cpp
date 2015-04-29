@@ -21,25 +21,7 @@ FSL_TEST_SUITE( data_transmission );
 
 
 namespace {
-    // Abstraction of remote thread that will only run a single connection
-    template<void (*Fn)(network_connection&)>
-    bool single_cnx() {
-        std::mutex mutex;
-        std::unique_lock<std::mutex> lock(mutex);
-        std::condition_variable signal;
-        network_connection::server server(host(0), 6218,
-            [&mutex, &signal](network_connection cnx) {
-                std::unique_lock<std::mutex> lock(mutex);
-                Fn(cnx);
-                lock.unlock();
-                signal.notify_one();
-            }
-        );
-        signal.wait(lock);
-        return true;
-    }
-
-    void embed_acks(network_connection &cnx) {
+    void embed_acks(network_connection cnx) {
         std::vector<unsigned char> data(0x8000);
         for ( std::size_t block(0); block < 8; ++block) {
             FSL_CHECK_NOTHROW(cnx >> data);
@@ -49,8 +31,7 @@ namespace {
 }
 
 FSL_TEST_FUNCTION( large_send_embed_acks ) {
-    worker server;
-    future<bool> ok = server.run<bool>(&single_cnx<embed_acks>);
+    network_connection::server server(host("0.0.0.0"), 6218, embed_acks);
     // Give enough time for thread to start
     boost::this_thread::sleep(boost::posix_time::milliseconds(250));
 
@@ -63,7 +44,6 @@ FSL_TEST_FUNCTION( large_send_embed_acks ) {
         FSL_CHECK_NOTHROW(cnx >> ack);
         FSL_CHECK_EQ(ack, "ack");
     }
-    FSL_CHECK(ok());
 }
 
 
@@ -77,7 +57,7 @@ namespace {
     const std::size_t c_blocks = 800;
 #endif
 
-    void ack_at_end(network_connection &cnx) {
+    void ack_at_end(network_connection cnx) {
         std::vector<unsigned char> data(0x8000);
         for ( std::size_t block(0); block < c_blocks; ++block ) {
             try {
@@ -99,22 +79,15 @@ namespace {
 }
 
 FSL_TEST_FUNCTION( large_send_ack_at_end ) {
-    worker server;
-    future<bool> ok = server.run<bool>(&single_cnx<ack_at_end>);
+    network_connection::server server(host("0.0.0.0"), 6217, ack_at_end);
     // Give enough time for thread to start
     boost::this_thread::sleep(boost::posix_time::milliseconds(250));
 
     network_connection cnx(host("localhost"), 6217);
-    try {
-        for ( std::size_t block(0); block < c_blocks; ++block ) {
-            std::string data(0x8000, "0123456789"[block %10]);
-            FSL_CHECK_NOTHROW(cnx << data);
-        }
-    } catch ( exceptions::exception &e ) {
-        insert(e.data(), "exception-in-remote-thread", coerce<json>(ok.exception()));
-        throw;
+    for ( std::size_t block(0); block < c_blocks; ++block ) {
+        std::string data(0x8000, "0123456789"[block %10]);
+        FSL_CHECK_NOTHROW(cnx << data);
     }
-    FSL_CHECK(ok());
     std::string ack;
     FSL_CHECK_NOTHROW(cnx >> ack);
     FSL_CHECK_EQ(ack, "ack");
