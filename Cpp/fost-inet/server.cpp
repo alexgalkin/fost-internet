@@ -31,16 +31,6 @@ struct network_connection::server::state {
     /// The server callback
     std::function<void(network_connection)> callback;
 
-    /*
-     * Socket handling is awkward. It's lifetime must at least match the accept handler
-     * This code assumes there is only a single accept handler that is waiting at any time
-     * and therefore the socket at this level is available as a sort of global.
-     * With C++14 we'll be able to capture the socket using std::move in the closure, but
-     * C++11 makes that awkward.
-     */
-    // TODO: Change to std::move captured in the closure in C++14
-    std::unique_ptr<asio::ip::tcp::socket> socket;
-
     state(const host &h, uint16_t p, std::function<void(network_connection)> fn)
     : stop(false), listener(io_service), callback(fn) {
         // Report aborts
@@ -57,8 +47,8 @@ struct network_connection::server::state {
         io_worker = std::move(std::thread([this, &mutex, &signal]() {
             std::unique_lock<std::mutex> lock(mutex);
             lock.unlock();
+            std::cout << "Signalling that io_service is running" << std::endl;
             signal.notify_one();
-            std::cout << "Signalled io_service is running" << std::endl;
             bool again = false;
             do {
                 again = false;
@@ -92,11 +82,20 @@ struct network_connection::server::state {
 
     void post_handler() {
         std::cout << "Going to listen for another connect" << std::endl;
-        socket.reset(new asio::ip::tcp::socket(io_service));
-        auto handler = [this](const boost::system::error_code& error) {
+        /*
+        * Socket handling is awkward. It's lifetime must at least match the accept handler
+        * This code assumes there is only a single accept handler that is waiting at any time
+        * and therefore the socket at this can easily leak.
+        * With C++14 we'll be able to capture the socket using std::move in the closure, but
+        * C++11 makes that awkward.
+        */
+        // TODO: Change to std::move captured in the closure in C++14
+        asio::ip::tcp::socket *socket(new asio::ip::tcp::socket(io_service));
+        auto handler = [this, socket](const boost::system::error_code& error) {
             std::cout << "Got a connect " << error << std::endl;
             if ( !error ) {
-                callback(network_connection(io_service, std::move(socket)));
+                callback(network_connection(io_service,
+                    std::unique_ptr<asio::ip::tcp::socket>(socket)));
             }
             post_handler();
         };
