@@ -30,8 +30,27 @@ struct network_connection::server::state {
 
     boost::asio::ip::tcp::acceptor listener;
 
+    /*
+     * Socket handling is awkward. It's lifetime must at least match the accept handler
+     * This code assumes there is only a single accept handler that is waiting at any time
+     * and therefore the socket at this level is available as a sort of global.
+     * With C++14 we'll be able to capture the socket using std::move in the closure, but
+     * C++11 makes that awkward.
+     */
+    // TODO: Change to std::move captured in the closure in C++14
+    std::unique_ptr<asio::ip::tcp::socket> socket;
+
     state(const host &h, uint16_t p, std::function<void(network_connection)> fn)
-    : listener(io_service, asio::ip::tcp::endpoint(h.address(), p)) {
+    : listener(io_service),
+            socket(new asio::ip::tcp::socket(io_service)) {
+        // Report aborts
+        asio::ip::tcp::endpoint endpoint(h.address(), p);
+        listener.open(endpoint.protocol());
+        listener.set_option(asio::socket_base::enable_connection_aborted(true));
+        listener.bind(endpoint);
+        listener.listen();
+
+        // Spin up the threads that are going to handle processing
         std::mutex mutex;
         std::unique_lock<std::mutex> lock(mutex);
         std::condition_variable signal;
@@ -40,14 +59,26 @@ struct network_connection::server::state {
             work.reset(new asio::io_service::work(io_service));
             lock.unlock();
             signal.notify_one();
-            io_service.run();
+            std::cout << "Signalled io_service is running" << std::endl;
+            bool again = false;
+            do {
+                again = false;
+                try {
+                    io_service.run();
+                } catch ( std::exception &e ) {
+                    again = true;
+                    std::cout << "Caught " << e.what() << std::endl;
+                } catch ( ... ) {
+                    again = true;
+                    std::cout << "Unknown exception caught" << std::endl;
+                }
+            } while ( again );
         }));
         signal.wait(lock);
         dispatcher = std::move(std::thread([this, fn, &mutex, &signal]() {
             std::unique_lock<std::mutex> lock(mutex);
-            std::unique_ptr<asio::ip::tcp::socket> socket(
-                new asio::ip::tcp::socket(io_service));
-            auto handler = [this, fn, &socket](const boost::system::error_code& error) {
+            auto handler = [this, fn](const boost::system::error_code& error) {
+                std::cout << "Got a connect " << error << std::endl;
                 if ( !error ) {
                     fn(network_connection(io_service, std::move(socket)));
                 }
@@ -56,11 +87,14 @@ struct network_connection::server::state {
             listener.async_accept(*socket, handler);
             lock.unlock();
             signal.notify_one();
+            std::cout << "Signalled first async_accept handler registered" << std::endl;
         }));
         signal.wait(lock);
+        std::cout << "Start up of server complete" << std::endl;
     }
 
     ~state() {
+        std::cout << "Server tear down requested" << std::endl;
         work.reset();
         io_service.stop();
         io_worker.join();

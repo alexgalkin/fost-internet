@@ -37,14 +37,14 @@ FSL_TEST_FUNCTION( connect_failure ) {
 }
 
 
-FSL_TEST_FUNCTION( read_timeouts ) {
-    host localhost;
-    uint16_t port = 64544u;
-    // Set a very short time out whilst running the test
-    const setting< int64_t > c_read_timeout(
-        "fost-internet/Cpp/fost-inet-test/connection.cpp",
-        "Network settings", "Read time out", 1);
-
+// FSL_TEST_FUNCTION( read_timeouts ) {
+//     host localhost;
+//     uint16_t port = 64544u;
+//     // Set a very short time out whilst running the test
+//     const setting< int64_t > c_read_timeout(
+//         "fost-internet/Cpp/fost-inet-test/connection.cpp",
+//         "Network settings", "Read time out", 1);
+//
 //     // Set up a server on a socket we're never going to do anything with
 //     boost::asio::io_service service;
 //     boost::asio::ip::tcp::acceptor server(service,
@@ -63,7 +63,7 @@ FSL_TEST_FUNCTION( read_timeouts ) {
 //         FSL_CHECK_EXCEPTION(cnx >> data,
 //             fostlib::exceptions::read_timeout&);
 //     }
-}
+// }
 
 
 // namespace {

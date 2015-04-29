@@ -79,15 +79,16 @@ namespace {
 }
 
 FSL_TEST_FUNCTION( large_send_ack_at_end ) {
-    network_connection::server server(host("0.0.0.0"), 6217, ack_at_end);
-    // Give enough time for thread to start
-    boost::this_thread::sleep(boost::posix_time::milliseconds(250));
+    network_connection::server server(host("0"), 6217, ack_at_end);
 
+    std::cout << "Trying to connect to socket" << std::endl;
     network_connection cnx(host("localhost"), 6217);
+    std::cout << "Connected" << std::endl;
     for ( std::size_t block(0); block < c_blocks; ++block ) {
         std::string data(0x8000, "0123456789"[block %10]);
         FSL_CHECK_NOTHROW(cnx << data);
     }
+    std::cout << "All data sent, waiting for ack" << std::endl;
     std::string ack;
     FSL_CHECK_NOTHROW(cnx >> ack);
     FSL_CHECK_EQ(ack, "ack");
