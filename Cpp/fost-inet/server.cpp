@@ -25,9 +25,6 @@ struct network_connection::server::state {
     /// Stop the thread from terminating (until we want it to)
     std::unique_ptr<asio::io_service::work> work;
 
-    /// Thread for dispatching work
-    std::thread dispatcher;
-
     boost::asio::ip::tcp::acceptor listener;
 
     /*
@@ -75,21 +72,14 @@ struct network_connection::server::state {
             } while ( again );
         }));
         signal.wait(lock);
-        dispatcher = std::move(std::thread([this, fn, &mutex, &signal]() {
-            std::unique_lock<std::mutex> lock(mutex);
-            auto handler = [this, fn](const boost::system::error_code& error) {
-                std::cout << "Got a connect " << error << std::endl;
-                if ( !error ) {
-                    fn(network_connection(io_service, std::move(socket)));
-                }
-                // Re-async_accept here
-            };
-            listener.async_accept(*socket, handler);
-            lock.unlock();
-            signal.notify_one();
-            std::cout << "Signalled first async_accept handler registered" << std::endl;
-        }));
-        signal.wait(lock);
+        auto handler = [this, fn](const boost::system::error_code& error) {
+            std::cout << "Got a connect " << error << std::endl;
+            if ( !error ) {
+                fn(network_connection(io_service, std::move(socket)));
+            }
+            // Re-async_accept here
+        };
+        listener.async_accept(*socket, handler);
         std::cout << "Start up of server complete" << std::endl;
     }
 
@@ -98,7 +88,6 @@ struct network_connection::server::state {
         work.reset();
         io_service.stop();
         io_worker.join();
-        dispatcher.join();
     }
 };
 
