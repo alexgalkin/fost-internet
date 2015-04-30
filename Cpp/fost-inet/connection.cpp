@@ -69,7 +69,16 @@ namespace {
             g_client_service.stop();
             g_client_thread.join();
         }));
-        g_client_service.run();
+        bool again = false;
+        do {
+            try {
+                again = false;
+                g_client_service.run();
+            } catch ( ... ) {
+                again = true;
+                std::cout << "****\nClient IO service got an exception\n****" << std::endl;
+            }
+        } while (again);
     });
 
 
