@@ -1,0 +1,16 @@
+include $(TOP)/../fost-base/fost.jam ;
+import path ;
+import utility ;
+
+
+rule asio ( name ) {
+    unit-test $(name)
+        :
+            $(TOP)/ASIO/$(name).cpp
+        ;
+}
+
+
+for local cpp in [ path.glob $(TOP)/ASIO/ : *.cpp ] {
+    asio [ utility.basename $(cpp) ] ;
+}
