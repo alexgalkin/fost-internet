@@ -48,8 +48,9 @@ int main() {
     });
     signal.wait(lock);
 
-    server.join();
+    io.join();
     client.join();
+    server.join();
     return 0;
 }
 
