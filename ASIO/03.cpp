@@ -6,6 +6,13 @@
 #include <boost/asio.hpp>
 
 
+namespace {
+    std::ostream &log_thread() {
+        return std::cout << std::this_thread::get_id() << " ";
+    }
+}
+
+
 int main() {
     std::mutex mutex;
     std::unique_lock<std::mutex> lock(mutex);
@@ -22,10 +29,10 @@ int main() {
         listener.bind(boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 4567));
         listener.listen();
         listener.async_accept(server_socket, [](const boost::system::error_code& error) {
-            std::cout << "Got a connection " << error << std::endl;
+            log_thread() << "Got a connection " << error << std::endl;
         });
         signal.notify_one();
-        std::cout << "Server set up" << std::endl;
+        log_thread() << "Server set up" << std::endl;
     });
     signal.wait(lock);
 
@@ -33,17 +40,17 @@ int main() {
     std::thread client([&]() {
         boost::asio::ip::tcp::endpoint address(boost::asio::ip::address_v4(0ul), 4567);
         client_socket.async_connect(address, [](const boost::system::error_code& error) {
-            std::cout << "Connected " << error << std::endl;
+            log_thread() << "Connected " << error << std::endl;
         });
         signal.notify_one();
-        std::cout << "Client set up" << std::endl;
+        log_thread() << "Client set up" << std::endl;
     });
     signal.wait(lock);
 
     std::thread io([&]() {
-        std::cout << "About to service IO requests" << std::endl;
+        log_thread() << "About to service IO requests" << std::endl;
         service.run();
-        std::cout << "Service jobs all run" << std::endl;
+        log_thread() << "Service jobs all run" << std::endl;
         signal.notify_one();
     });
     signal.wait(lock);
