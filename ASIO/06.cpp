@@ -49,10 +49,10 @@ int main() {
 
         std::shared_ptr<connection> server_cnx(new connection(server_service));
         listener.async_accept(server_cnx->socket,
-            [&, server_cnx](const boost::system::error_code& error) {
+            [&, server_cnx](const boost::system::error_code& error) mutable {
                 log_thread() << "Server got a connection " << error << std::endl;
                 boost::asio::async_read_until(server_cnx->socket, server_cnx->buffer, '\n',
-                    [&, server_cnx](const boost::system::error_code& error, std::size_t bytes) {
+                    [&, server_cnx](const boost::system::error_code& error, std::size_t bytes) mutable {
                         log_thread() << "Got " << bytes << " bytes, " << error
                             << ". server_cnx use count: " << server_cnx.use_count() << std::endl;
                         std::unique_lock<std::mutex> lock(read_mutex);
