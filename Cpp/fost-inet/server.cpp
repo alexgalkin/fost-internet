@@ -75,6 +75,7 @@ struct network_connection::server::state {
                 throw exceptions::not_implemented("Lock timeout starting server io_service thread");
             }
             log_thread() << "Signalling that io_service is about to run" << std::endl;
+            lock.unlock();
             signal.notify_one();
             bool again = false;
             do {
