@@ -66,12 +66,14 @@ struct network_connection::server::state {
         post_handler(ipv6_listener);
 
         // Spin up the threads that are going to handle processing
-        std::mutex mutex;
-        std::unique_lock<std::mutex> lock(mutex);
-        std::condition_variable signal;
+        std::timed_mutex mutex;
+        std::unique_lock<std::timed_mutex> lock(mutex);
+        std::condition_variable_any signal;
         io_worker = std::move(std::thread([this, &mutex, &signal]() {
-            std::unique_lock<std::mutex> lock(mutex);
-            lock.unlock();
+            std::unique_lock<std::timed_mutex> lock(mutex, std::chrono::seconds(1));
+            if ( !lock.owns_lock() ) {
+                throw exceptions::not_implemented("Lock timeout starting server io_service thread");
+            }
             log_thread() << "Signalling that io_service is about to run" << std::endl;
             signal.notify_one();
             bool again = false;
