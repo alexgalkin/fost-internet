@@ -143,7 +143,7 @@ struct network_connection::state {
             asio::error::host_not_found;
         json errors;
         while ( connect_error && endpoint != end ) {
-            std::unique_lock<std::timed_mutex> lock(mutex, std::chrono::seconds(connect_timeout));
+            std::unique_lock<std::timed_mutex> lock(mutex, std::chrono::seconds(1));
             if ( !lock.owns_lock() ) {
                 throw exceptions::not_implemented("Lock timeout starting connect");
             }
@@ -153,7 +153,7 @@ struct network_connection::state {
                 [this, &connect_error, &errors, &ip](
                     const boost::system::error_code &e
                 ) {
-                    std::unique_lock<std::timed_mutex> lock(mutex, std::chrono::seconds(connect_timeout));
+                    std::unique_lock<std::timed_mutex> lock(mutex, std::chrono::seconds(1));
                     if ( !lock.owns_lock() ) {
                         throw exceptions::not_implemented("Lock timeout entering async_connect handler");
                     }
@@ -203,7 +203,7 @@ struct network_connection::state {
     template<typename B>
     std::size_t send(const B &b, nliteral message) {
         boost::system::error_code error{};
-        std::unique_lock<std::timed_mutex> lock(mutex, std::chrono::seconds(write_timeout));
+        std::unique_lock<std::timed_mutex> lock(mutex, std::chrono::seconds(1));
         if ( !lock.owns_lock() ) {
             throw exceptions::not_implemented("Lock timeout initiating send");
         }
@@ -212,7 +212,7 @@ struct network_connection::state {
         auto handler = [this, &error, &sent](
             const boost::system::error_code &e, std::size_t bytes
         ) {
-            std::unique_lock<std::timed_mutex> lock(mutex, std::chrono::seconds(write_timeout));
+            std::unique_lock<std::timed_mutex> lock(mutex, std::chrono::seconds(1));
             if ( !lock.owns_lock() ) {
                 throw exceptions::not_implemented("Lock timeout starting async_write handler");
             }
@@ -262,14 +262,14 @@ private:
     std::vector<utf8> do_read(R reader, nliteral message) {
         boost::system::error_code error{};
         std::size_t bytes_read{};
-        std::unique_lock<std::timed_mutex> lock(mutex, std::chrono::seconds(read_timeout));
+        std::unique_lock<std::timed_mutex> lock(mutex, std::chrono::seconds(1));
         if ( !lock.owns_lock() ) {
             throw exceptions::not_implemented("Lock timeout initiating read");
         }
         auto handler = [this, &error, &bytes_read](
             const boost::system::error_code &e, std::size_t bytes
         ) {
-            std::unique_lock<std::timed_mutex> lock(mutex, std::chrono::seconds(read_timeout));
+            std::unique_lock<std::timed_mutex> lock(mutex, std::chrono::seconds(1));
             if ( !lock.owns_lock() ) {
                 throw exceptions::not_implemented("Lock timeout starting async_read handler");
             }
