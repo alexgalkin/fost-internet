@@ -6,7 +6,7 @@ import utility ;
 rule asio ( name ) {
     unit-test $(name)
         :
-            ../../Boost//boost-system
+            ../../Boost//boost-system-dll
             $(TOP)/ASIO/$(name).cpp
         ;
 }
