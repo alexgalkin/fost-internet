@@ -63,10 +63,9 @@ int main() {
         lock.unlock();
         signal.notify_one();
         if ( read_done.wait_for(read_lock, std::chrono::seconds(1)) == std::cv_status::timeout ) {
-            server_cnx->socket.cancel();
-            server_cnx->socket.close();
             log_thread() << "Server read timed out -- cancelling socket jobs. "
                 "server_cnx use count: " << server_cnx.use_count() << std::endl;
+            server_cnx->socket = boost::asio::ip::tcp::socket(server_service);
         } else {
             log_thread() << "Server data read" << std::endl;
         }
