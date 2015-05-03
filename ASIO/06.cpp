@@ -53,7 +53,8 @@ int main() {
                 log_thread() << "Server got a connection " << error << std::endl;
                 boost::asio::async_read_until(server_cnx->socket, server_cnx->buffer, '\n',
                     [&, server_cnx](const boost::system::error_code& error, std::size_t bytes) {
-                        log_thread() << "Got " << bytes << ", " << error << std::endl;
+                        log_thread() << "Got " << bytes << " bytes, " << error
+                            << ". server_cnx use count: " << server_cnx.use_count() << std::endl;
                         std::unique_lock<std::mutex> lock(read_mutex);
                         lock.unlock();
                         read_done.notify_one();
@@ -62,9 +63,10 @@ int main() {
         lock.unlock();
         signal.notify_one();
         if ( read_done.wait_for(read_lock, std::chrono::seconds(1)) == std::cv_status::timeout ) {
-            log_thread() << "Server read timed out -- cancelling socket jobs" << std::endl;
             server_cnx->socket.cancel();
             server_cnx->socket.close();
+            log_thread() << "Server read timed out -- cancelling socket jobs. "
+                "server_cnx use count: " << server_cnx.use_count() << std::endl;
         } else {
             log_thread() << "Server data read" << std::endl;
         }
