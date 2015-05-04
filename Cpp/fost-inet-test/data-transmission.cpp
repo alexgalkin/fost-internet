@@ -30,7 +30,7 @@ FSL_TEST_FUNCTION(small_text_sends) {
             std::cout << "Server sending reply" << std::endl;
             cnx << "server string\r\n";
             std::cout << "Server done" << std::endl;
-        }
+        }, 2
     );
     network_connection cnx(host("127.0.0.1"), 6219);
     std::cout << "Client connected, sending request" << std::endl;
