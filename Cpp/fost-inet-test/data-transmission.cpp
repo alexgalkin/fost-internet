@@ -71,45 +71,45 @@ namespace {
     // Windows doesn't seem to have a big enough buffer for this to pass
     // unless the number of blocks is small. Effectively disable the test
     // under Windows
-//     const std::size_t c_blocks = 1;
+    const std::size_t c_blocks = 1;
 #else
-//     const std::size_t c_blocks = 800;
+    const std::size_t c_blocks = 800;
 #endif
 
-//     void ack_at_end(network_connection cnx) {
-//         std::vector<unsigned char> data(0x8000);
-//         for ( std::size_t block(0); block < c_blocks; ++block ) {
-//             try {
-//                 FSL_CHECK_NOTHROW(cnx >> data);
-//                 for ( std::size_t i(0); i != data.size(); ++i )
-//                     try {
-//                         FSL_CHECK_EQ(data[i], "0123456789"[block %10]);
-//                     } catch ( exceptions::exception &e ) {
-//                         insert(e.data(), "byte-number", i);
-//                         throw;
-//                     }
-//             } catch ( exceptions::exception &e ) {
-//                 insert(e.data(), "block-number", block);
-//                 throw;
-//             }
-//         }
-//         FSL_CHECK_NOTHROW(cnx << "ack\r\n");
-//     }
+    void ack_at_end(network_connection cnx) {
+        std::vector<unsigned char> data(0x8000);
+        for ( std::size_t block(0); block < c_blocks; ++block ) {
+            try {
+                FSL_CHECK_NOTHROW(cnx >> data);
+                for ( std::size_t i(0); i != data.size(); ++i )
+                    try {
+                        FSL_CHECK_EQ(data[i], "0123456789"[block %10]);
+                    } catch ( exceptions::exception &e ) {
+                        insert(e.data(), "byte-number", i);
+                        throw;
+                    }
+            } catch ( exceptions::exception &e ) {
+                insert(e.data(), "block-number", block);
+                throw;
+            }
+        }
+        FSL_CHECK_NOTHROW(cnx << "ack\r\n");
+    }
 }
-// FSL_TEST_FUNCTION( large_send_ack_at_end ) {
-//     network_connection::server server(host("0"), 6217, ack_at_end);
-//
-//     std::cout << "Trying to connect to socket" << std::endl;
-//     network_connection cnx(host("localhost"), 6217);
-//     std::cout << "Connected" << std::endl;
-//     for ( std::size_t block(0); block < c_blocks; ++block ) {
-//         std::cout << "Sending block " << block << std::endl;
-//         std::string data(0x8000, "0123456789"[block %10]);
-//         FSL_CHECK_NOTHROW(cnx << data);
-//         std::cout << "Data sent for block " << block << std::endl;
-//     }
-//     std::cout << "All data sent, waiting for ack" << std::endl;
-//     std::string ack;
-//     FSL_CHECK_NOTHROW(cnx >> ack);
-//     FSL_CHECK_EQ(ack, "ack");
-// }
+FSL_TEST_FUNCTION( large_send_ack_at_end ) {
+    network_connection::server server(host("0"), 6217, ack_at_end, 2);
+
+    std::cout << "Trying to connect to socket" << std::endl;
+    network_connection cnx(host("localhost"), 6217);
+    std::cout << "Connected" << std::endl;
+    for ( std::size_t block(0); block < c_blocks; ++block ) {
+        std::cout << "Sending block " << block << std::endl;
+        std::string data(0x8000, "0123456789"[block %10]);
+        FSL_CHECK_NOTHROW(cnx << data);
+        std::cout << "Data sent for block " << block << std::endl;
+    }
+    std::cout << "All data sent, waiting for ack" << std::endl;
+    std::string ack;
+    FSL_CHECK_NOTHROW(cnx >> ack);
+    FSL_CHECK_EQ(ack, "ack");
+}
